@@ -26,9 +26,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 (function (global) {
     'use strict';
 
-    /* ============================================================
-       向量工具
-       ============================================================ */
     const V = {
         add: (a, b) => ({ x: a.x + b.x, y: a.y + b.y }),
         sub: (a, b) => ({ x: a.x - b.x, y: a.y - b.y }),
@@ -42,9 +39,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         lerp: (a, b, t) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }),
     };
 
-    /* ============================================================
-       光学公式
-       ============================================================ */
     function reflect(d, n) {
         return V.norm(V.sub(d, V.mul(n, 2 * V.dot(d, n))));
     }
@@ -53,14 +47,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         const cosI = -V.dot(d, n);
         const eta = n1 / n2;
         const sinT2 = eta * eta * (1 - cosI * cosI);
-        if (sinT2 > 1) return null;   // 全反射
+        if (sinT2 > 1) return null;
         const cosT = Math.sqrt(1 - sinT2);
         return V.norm(V.add(V.mul(d, eta), V.mul(n, eta * cosI - cosT)));
     }
 
-    /* ============================================================
-       几何求交
-       ============================================================ */
     function raySegment(ray, a, b) {
         const d = ray.dir;
         const e = V.sub(b, a);
@@ -77,7 +68,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         return { t, point, normal };
     }
 
-    // 光线与圆弧求交（解析）
     function rayArc(ray, c, R, a0, a1) {
         const oc = V.sub(ray.origin, c);
         const b = V.dot(oc, ray.dir);
@@ -91,7 +81,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         for (const t of ts) {
             const p = V.add(ray.origin, V.mul(ray.dir, t));
             let ang = Math.atan2(p.y - c.y, p.x - c.x);
-            // 规范化到 [a0, a0+2π)
             let da = ang - a0;
             while (da < 0) da += Math.PI * 2;
             while (da >= Math.PI * 2) da -= Math.PI * 2;
@@ -106,23 +95,14 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         return best;
     }
 
-    // 光线与抛物线求交（解析，非多段线）
-    // 抛物线：局部坐标 y = x^2 / (4f)，顶点 vertex，开口方向 theta（单位向量 openDir），
-    // 局部 x 轴沿 perp(openDir)，局部 y 轴沿 openDir
     function rayParabola(ray, vertex, focal, theta, aperture) {
-        // 局部坐标变换：世界 → 局部
         const openDir = V.fromAngle(theta);
-        const xAxis = V.perp(openDir);         // 局部 x
-        const yAxis = openDir;                 // 局部 y（开口方向）
+        const xAxis = V.perp(openDir);
+        const yAxis = openDir;
         const rel = V.sub(ray.origin, vertex);
         const o = { x: V.dot(rel, xAxis), y: V.dot(rel, yAxis) };
         const d = { x: V.dot(ray.dir, xAxis), y: V.dot(ray.dir, yAxis) };
 
-        // 局部抛物线： y = x^2 / (4f)
-        // 射线： P(t) = o + d*t
-        // 满足： o.y + d.y*t = (o.x + d.x*t)^2 / (4f)
-        // → d.y*t + o.y - (o.x^2 + 2*o.x*d.x*t + d.x^2*t^2)/(4f) = 0
-        // → (-d.x^2/(4f)) * t^2 + (d.y - 2*o.x*d.x/(4f)) * t + (o.y - o.x^2/(4f)) = 0
         const inv4f = 1 / (4 * focal);
         const A = -d.x * d.x * inv4f;
         const B = d.y - 2 * o.x * d.x * inv4f;
@@ -142,19 +122,14 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         for (const t of ts) {
             if (t < 1e-4) continue;
             const pLocal = { x: o.x + d.x * t, y: o.y + d.y * t };
-            // 口径范围检查
             if (Math.abs(pLocal.x) > aperture / 2) continue;
-            // 局部 → 世界
             const p = V.add(vertex, V.add(V.mul(xAxis, pLocal.x), V.mul(yAxis, pLocal.y)));
 
-            // 局部抛物线在 pLocal.x 处切线方向：(1, pLocal.x/(2f))
             const tx = 1;
             const ty = pLocal.x / (2 * focal);
-            // 局部法线（朝开口反方向，即入射面一侧）：(-ty, tx) 归一化
             let nLocal = { x: -ty, y: tx };
             const nl = Math.hypot(nLocal.x, nLocal.y) || 1;
             nLocal = { x: nLocal.x / nl, y: nLocal.y / nl };
-            // 局部 → 世界法线
             let normal = {
                 x: xAxis.x * nLocal.x + yAxis.x * nLocal.y,
                 y: xAxis.y * nLocal.x + yAxis.y * nLocal.y,
@@ -202,9 +177,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
                p.y >= rect.y && p.y <= rect.y + rect.h;
     }
 
-    /* ============================================================
-       常量
-       ============================================================ */
     const AIR_N = 1.0;
     const WATER_N = 1.33;
     const GLASS_N = 1.5;
@@ -240,10 +212,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
     function mediumAttenuation(I, dist, kMedium) {
         return I * Math.exp(-kMedium * dist);
     }
-
-    /* ============================================================
-       元件工厂（保留原接口）
-       ============================================================ */
 
     function makeMirror(x, y, angle, length) {
         const self = {
@@ -457,8 +425,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         return self;
     }
 
-    // ---- 球面镜 ----
-    // 保留原接口，但放宽"反射面朝向"判断：不再强制方向，交给法线朝向决定
     function makeSphericalMirror(cx, cy, aperture, angle, focalLength, opts = {}) {
         const f = focalLength;
         const R = Math.abs(f) * 2;
@@ -488,7 +454,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
             setPos(p) { this.pos.x = p.x; this.pos.y = p.y; this.recompute(); },
 
             intersect(ray) {
-                // 解析圆求交，真实球面法线
                 return rayArc(ray, this.center, R, this.a0, this.a1);
             },
 
@@ -534,9 +499,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         return self;
     }
 
-    // ---- 抛物面镜（新增） ----
-    // 抛物面：顶点 vertex，焦距 f，开口方向 angle（单位向量 = openDir）
-    // 反射面朝开口方向的反方向；光线从开口方向入射，反射后汇聚到焦点
     function makeParabolicMirror(cx, cy, aperture, angle, focalLength, opts = {}) {
         const f = Math.abs(focalLength);
         const self = {
@@ -555,7 +517,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
             setPos(p) { this.pos.x = p.x; this.pos.y = p.y; this.recompute(); },
 
             intersect(ray) {
-                // 解析抛物线求交
                 return rayParabola(ray, this.vertex, f, this.angle, this.aperture);
             },
 
@@ -569,7 +530,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
             },
 
             samplePoints() {
-                // 抛物线上均匀取点：局部 x 从 -aperture/2 到 aperture/2
                 const pts = [];
                 const openDir = V.fromAngle(this.angle);
                 const xAxis = V.perp(openDir);
@@ -595,7 +555,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
                 ctx.strokeStyle = '#ccf0ff';
                 ctx.lineWidth = 1.5;
                 ctx.stroke();
-                // 焦点标记
                 ctx.beginPath();
                 ctx.arc(this.focus.x, this.focus.y, 3, 0, Math.PI * 2);
                 ctx.fillStyle = '#ffee88';
@@ -607,10 +566,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         return self;
     }
 
-    // ---- 厚透镜（新增） ----
-    // 用两段圆弧表示前后表面，光线进入时折射一次，出射时再折射一次
-    // 简化版：单个圆盘（两个表面合并为一条光路），用两次折射公式
-    // 这里用一个"双面圆弧"结构：两个圆弧圆心沿主轴对称
     function makeThickLens(cx, cy, aperture, angle, thickness, ior = 1.5, opts = {}) {
         const n = ior;
         const self = {
@@ -618,17 +573,13 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
             pos: { x: cx, y: cy },
             aperture, angle, thickness, ior: n,
 
-            // 两个表面：front / back
-            // 用两段圆弧近似，分别位于 pos ± axis * thickness/2
             front: null,
             back: null,
 
             recompute() {
                 const openDir = V.fromAngle(this.angle);
                 const xAxis = V.perp(openDir);
-                // 前表面：朝向入射侧，半径 R = 2 * thickness（近似）
-                // 简化：两段圆弧圆心在主轴两侧，半径足够大
-                const R = 2 * this.thickness + this.aperture; // 大半径，近似平面
+                const R = 2 * this.thickness + this.aperture;
                 const cOff = R;
                 const frontCenter = V.add(this.pos, V.mul(openDir, -cOff + this.thickness / 2));
                 const backCenter = V.add(this.pos, V.mul(openDir,  cOff - this.thickness / 2));
@@ -664,13 +615,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
             },
 
             interact(ray, hit) {
-                // 判断当前是前表面还是后表面：靠命中点与主轴的位置
                 const openDir = V.fromAngle(this.angle);
                 const rel = V.sub(hit.point, this.pos);
                 const along = V.dot(rel, openDir);
-                const entering = along > 0;   // 命中后表面 = 出射
+                const entering = along > 0;
 
-                // 判定折射率：从空气进入玻璃 or 玻璃到空气
                 const n1 = entering ? n : AIR_N;
                 const n2 = entering ? AIR_N : n;
 
@@ -690,7 +639,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
                 const N = 4;
                 for (let i = 0; i <= N; i++) {
                     const lx = -this.aperture / 2 + this.aperture * i / N;
-                    // 前后表面共 2*(N+1) 个点，这里合并
                     pts.push(V.add(this.pos, V.mul(xAxis, lx)));
                 }
                 return pts;
@@ -714,7 +662,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         return self;
     }
 
-    /* ---- 三棱镜 ---- */
     function makePrism(cx, cy, size, angle, opts = {}) {
         const n = opts.n ?? GLASS_N;
         const self = {
@@ -1011,22 +958,17 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         return self;
     }
 
-    /* ============================================================
-       引擎主体
-       ============================================================ */
     function PrismEngine(opts = {}) {
         this.elements = [];
         this.segments = [];
         this.width = opts.width ?? 800;
         this.height = opts.height ?? 600;
 
-        // SPBT 配置
         this.maxDepth = MAX_BOUNCE;
         this.maxSubBeams = 256;
         this.mergeEpsilon = 0.5;
         this.debug = false;
 
-        // 工厂方法
         this.addMirror = (x, y, a, l) => { const e = makeMirror(x, y, a, l); this.elements.push(e); return e; };
         this.addGlass = (x, y, w, h, o) => { const e = makeGlass(x, y, w, h, o); this.elements.push(e); return e; };
         this.addWater = (x, y, w, h, o) => { const e = makeWater(x, y, w, h, o); this.elements.push(e); return e; };
@@ -1039,15 +981,12 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         this.addLens = (cx, cy, len, a, f, o) => { const e = makeLens(cx, cy, len, a, f, o); this.elements.push(e); return e; };
         this.addSphericalMirror = (cx, cy, ap, a, f, o) => { const e = makeSphericalMirror(cx, cy, ap, a, f, o); this.elements.push(e); return e; };
 
-        // 新增（高阶元件）
         this.addParabolicMirror = (cx, cy, ap, a, f, o) => { const e = makeParabolicMirror(cx, cy, ap, a, f, o); this.elements.push(e); return e; };
         this.addThickLens = (cx, cy, ap, a, t, ior, o) => { const e = makeThickLens(cx, cy, ap, a, t, ior, o); this.elements.push(e); return e; };
 
-        // 清空
         this.clear = () => { this.elements.length = 0; this.segments.length = 0; };
     }
 
-    // ----- 原有：单条光线追踪（保留） -----
     PrismEngine.prototype.trace = function (ray, depth = 0) {
         if (depth > MAX_BOUNCE || ray.intensity < MIN_INTENSITY) return;
 
@@ -1087,7 +1026,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         }
     };
 
-    // ----- 原有：平行光带追踪（保留） -----
     PrismEngine.prototype.traceParallelLight = function (light) {
         const dir = V.fromAngle(light.angle);
         const perp = V.perp(dir);
@@ -1141,11 +1079,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         }
     };
 
-    // ============================================================
-    // 新增：SPBT 高层接口
-    // ============================================================
-
-    // 单条光线追踪 → 分段数组
     function _traceBeamRay(elements, start, dir, maxDepth, onHit) {
         const segments = [];
         let pos = { x: start.x, y: start.y };
@@ -1181,11 +1114,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
                 depth, incidentDir: { ...d },
             });
 
-            // 计算下一段方向
             const proxyRay = { origin: pos, dir: d, intensity: 1, bounce: depth, lambda: 550 };
             const nextRays = el.interact(proxyRay, hit);
             if (!nextRays || nextRays.length === 0) {
-                // 无后续：终点
                 break;
             }
             const nr = nextRays[0];
@@ -1203,18 +1134,13 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         return path;
     }
 
-    // SPBT 主接口
     PrismEngine.prototype.traceBeam = function (light, opts = {}) {
-        // 兼容两种 light 形式：
-        //   1. 由 addParallelLight 创建的对象（有 pos / width / angle）
-        //   2. 兼容旧版本 main.js 中的 { origin, dir, width }
         const origin = light.pos || light.origin;
         const angle = (light.angle !== undefined) ? light.angle : Math.atan2(light.dir.y, light.dir.x);
         const dir = V.fromAngle(angle);
         const perp = V.perp(dir);
         const halfW = light.width / 2;
 
-        // 1. 收集采样点 → 切分
         const cuts = [-halfW, halfW];
         for (const el of this.elements) {
             if (!el.samplePoints || el === light) continue;
@@ -1237,7 +1163,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
             }
         }
 
-        // 2. 每个子光带追踪两条边界光线
         const subBeams = [];
         const maxN = Math.min(finalCuts.length - 1, this.maxSubBeams);
         const maxDepth = this.maxDepth;
@@ -1324,7 +1249,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         return false;
     };
 
-    // 链式构建器
     function SceneBuilder(engine) { this.engine = engine; }
     SceneBuilder.prototype.mirror = function (x, y, a, l) { this.engine.addMirror(x, y, a, l); return this; };
     SceneBuilder.prototype.glass = function (x, y, w, h, o) { this.engine.addGlass(x, y, w, h, o); return this; };
@@ -1343,7 +1267,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
     PrismEngine.prototype.scene = function () { return new SceneBuilder(this); };
 
-    // 光带插值工具
     function interpolateBeam(subBeam, t) {
         const { leftPath, rightPath } = subBeam;
         const n = Math.min(leftPath.length, rightPath.length);
@@ -1380,7 +1303,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         if (opts.mergeEpsilon !== undefined) engine.mergeEpsilon = opts.mergeEpsilon;
         if (opts.debug !== undefined) engine.debug = opts.debug;
 
-        // 兼容 canvas 选项
         if (opts.canvas) {
             engine.canvas = opts.canvas;
             engine.ctx = opts.canvas.getContext('2d');
@@ -1390,7 +1312,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         return engine;
     }
 
-    // ----- 原有：update / render / pickAt / allTargetsLit / getSegments（保留） -----
     PrismEngine.prototype.update = function () {
         this.segments.length = 0;
         for (const el of this.elements) if (el.type === 'target') el.lit = false;
@@ -1582,19 +1503,14 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         return this.segments;
     };
 
-    /* ============================================================
-       导出
-       ============================================================ */
     const API = {
         Engine: PrismEngine,
         V,
-        // 顶层工具（来自 main.js）
         createEngine,
         SceneBuilder,
         interpolateBeam,
         getBeamPaths,
         traceAllBeams,
-        // 元件工厂（方便直接 new）
         makeMirror,
         makeGlass,
         makeWater,
